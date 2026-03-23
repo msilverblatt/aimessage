@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>aimessage</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.aimessage.server</string>
+    <key>CFBundleName</key>
+    <string>AiMessage</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>AiMessage needs to control Messages.app to send iMessages.</string>
+</dict>
+</plist>
