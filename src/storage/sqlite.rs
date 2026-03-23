@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -40,10 +40,15 @@ impl Storage {
 
             CREATE TABLE IF NOT EXISTS message_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                backend_message_id TEXT NOT NULL UNIQUE,
+                imessage_rowid TEXT NOT NULL UNIQUE,
                 conversation_id TEXT NOT NULL,
                 delivered_at TEXT NOT NULL DEFAULT (datetime('now')),
                 webhook_delivery_status TEXT NOT NULL DEFAULT 'pending'
+            );
+
+            CREATE TABLE IF NOT EXISTS state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );"
         ).map_err(|e| format!("Migration failed: {}", e))?;
         Ok(())
@@ -143,13 +148,13 @@ impl Storage {
 
     pub fn log_message(
         &self,
-        backend_message_id: &str,
+        imessage_rowid: &str,
         conversation_id: &str,
     ) -> Result<bool, String> {
         let conn = self.conn.lock().unwrap();
         let result = conn.execute(
-            "INSERT OR IGNORE INTO message_log (backend_message_id, conversation_id) VALUES (?1, ?2)",
-            params![backend_message_id, conversation_id],
+            "INSERT OR IGNORE INTO message_log (imessage_rowid, conversation_id) VALUES (?1, ?2)",
+            params![imessage_rowid, conversation_id],
         );
         match result {
             Ok(count) => Ok(count > 0),
@@ -159,15 +164,45 @@ impl Storage {
 
     pub fn update_delivery_status(
         &self,
-        backend_message_id: &str,
+        imessage_rowid: &str,
         status: &str,
     ) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE message_log SET webhook_delivery_status = ?1 WHERE backend_message_id = ?2",
-            params![status, backend_message_id],
+            "UPDATE message_log SET webhook_delivery_status = ?1 WHERE imessage_rowid = ?2",
+            params![status, imessage_rowid],
         )
         .map_err(|e| format!("Failed to update status: {}", e))?;
         Ok(())
+    }
+
+    pub fn get_state(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM state WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to get state: {}", e))
+    }
+
+    pub fn set_state(&self, key: &str, value: &str) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO state (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )
+        .map_err(|e| format!("Failed to set state: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_last_rowid(&self) -> Result<i64, String> {
+        self.get_state("last_processed_rowid")
+            .map(|v| v.and_then(|s| s.parse().ok()).unwrap_or(0))
+    }
+
+    pub fn set_last_rowid(&self, rowid: i64) -> Result<(), String> {
+        self.set_state("last_processed_rowid", &rowid.to_string())
     }
 }
