@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing;
 
-use crate::core_layer::types::Message;
+use crate::core_layer::types::Event;
 use crate::storage::sqlite::Storage;
 
 pub struct WebhookDispatcher {
@@ -19,40 +19,42 @@ impl WebhookDispatcher {
         }
     }
 
-    pub fn spawn(self, mut receiver: mpsc::Receiver<Message>) {
+    pub fn spawn(self, mut receiver: mpsc::Receiver<Event>) {
         tokio::spawn(async move {
             tracing::info!("Webhook dispatcher started");
-            while let Some(message) = receiver.recv().await {
-                self.handle_message(&message).await;
+            while let Some(event) = receiver.recv().await {
+                self.handle_event(&event).await;
             }
             tracing::info!("Webhook dispatcher stopped");
         });
     }
 
-    async fn handle_message(&self, message: &Message) {
-        let is_new = self
-            .storage
-            .log_message(&message.id, &message.conversation_id);
+    async fn handle_event(&self, event: &Event) {
+        let event_name = event.event_name();
 
+        let event_id = match event {
+            Event::NewMessage(m) | Event::MessageSent(m) => &m.id,
+            Event::ReactionAdded(r) | Event::ReactionRemoved(r) => &r.id,
+        };
+        let conversation_id = match event {
+            Event::NewMessage(m) | Event::MessageSent(m) => &m.conversation_id,
+            Event::ReactionAdded(r) | Event::ReactionRemoved(r) => &r.message_id,
+        };
+
+        let is_new = self.storage.log_message(event_id, conversation_id);
         match is_new {
             Ok(false) => {
-                tracing::debug!(message_id = %message.id, "Duplicate message, skipping");
+                tracing::debug!(event_id = %event_id, "Duplicate event, skipping");
                 return;
             }
             Err(e) => {
-                tracing::error!(error = %e, "Failed to log message");
+                tracing::error!(error = %e, "Failed to log event");
                 return;
             }
             Ok(true) => {}
         }
 
-        let event = if message.is_from_me {
-            "message.sent"
-        } else {
-            "message.received"
-        };
-
-        let webhooks = match self.storage.get_webhooks_for_event(event) {
+        let webhooks = match self.storage.get_webhooks_for_event(event_name) {
             Ok(w) => w,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to get webhooks");
@@ -60,15 +62,12 @@ impl WebhookDispatcher {
             }
         };
 
-        let payload = serde_json::json!({
-            "event": event,
-            "data": message,
-        });
+        let payload = serde_json::to_value(event).unwrap();
 
         for webhook in &webhooks {
             let delivered = self.deliver_with_retry(&webhook.url, &payload).await;
             let status = if delivered { "delivered" } else { "failed" };
-            if let Err(e) = self.storage.update_delivery_status(&message.id, status) {
+            if let Err(e) = self.storage.update_delivery_status(event_id, status) {
                 tracing::error!(error = %e, "Failed to update delivery status");
             }
         }
@@ -81,12 +80,10 @@ impl WebhookDispatcher {
             std::time::Duration::from_secs(30),
         ];
 
-        // First attempt (no delay)
         if self.try_deliver(url, payload).await {
             return true;
         }
 
-        // Retry up to 2 more times (3 attempts total per spec)
         for (retry, delay) in delays_after_failure.iter().take(2).enumerate() {
             tracing::info!(url = %url, retry = retry + 1, "Retrying webhook delivery");
             tokio::time::sleep(*delay).await;
