@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
@@ -77,6 +76,34 @@ pub async fn get_conversation(
     Ok(Json(serde_json::to_value(conversation).unwrap()))
 }
 
+// Reactions / Typing
+
+pub async fn send_reaction(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<SendReactionBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let reaction_type = match body.reaction.as_str() {
+        "love" => crate::core_layer::types::ReactionType::Love,
+        "thumbsup" => crate::core_layer::types::ReactionType::ThumbsUp,
+        "thumbsdown" => crate::core_layer::types::ReactionType::ThumbsDown,
+        "haha" => crate::core_layer::types::ReactionType::HaHa,
+        "exclamation" => crate::core_layer::types::ReactionType::Exclamation,
+        "question" => crate::core_layer::types::ReactionType::Question,
+        other => return Err(ApiError::BadRequest(format!("Unknown reaction: {}", other))),
+    };
+    state.backend.send_reaction(&id, reaction_type).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn send_typing(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    state.backend.send_typing(&id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 // Webhooks
 
 pub async fn create_webhook(
@@ -130,7 +157,7 @@ pub async fn health(
             status: "ok".to_string(),
             backend: BackendHealthResponse {
                 connected: status.connected,
-                backend_type: status.backend_type,
+                private_api_available: status.private_api_available,
                 message: status.message,
             },
         }),
@@ -138,45 +165,9 @@ pub async fn health(
             status: "degraded".to_string(),
             backend: BackendHealthResponse {
                 connected: false,
-                backend_type: "unknown".to_string(),
+                private_api_available: false,
                 message: Some(e.to_string()),
             },
         }),
     }
-}
-
-// Internal: BlueBubbles webhook receiver
-
-pub async fn bb_webhook_handler(
-    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<serde_json::Value>,
-) -> StatusCode {
-    if !addr.ip().is_loopback() {
-        tracing::warn!(remote_addr = %addr, "Rejected non-localhost request to internal endpoint");
-        return StatusCode::FORBIDDEN;
-    }
-    tracing::info!("Received BlueBubbles webhook");
-
-    let event_type = body.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
-
-    if event_type != "new-message" {
-        tracing::debug!(event_type = %event_type, "Ignoring non-message BB webhook");
-        return StatusCode::OK;
-    }
-
-    let data = match body.get("data") {
-        Some(d) => d,
-        None => {
-            tracing::warn!("BB webhook missing data field");
-            return StatusCode::OK;
-        }
-    };
-
-    let message = crate::core_layer::bb_parse::parse_bb_message(data);
-    if let Some(msg) = message {
-        state.backend.push_incoming_message(msg).await;
-    }
-
-    StatusCode::OK
 }

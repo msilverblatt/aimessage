@@ -84,7 +84,7 @@ impl ChatDb {
             };
             let conv_id = chat_guid.unwrap_or_default();
 
-            if assoc_type >= 2000 && assoc_type <= 3005 {
+            if (2000..=3005).contains(&assoc_type) {
                 // This is a reaction
                 if let Some(reaction_type) = ReactionType::from_associated_type(assoc_type) {
                     let target_guid = assoc_guid.unwrap_or_default();

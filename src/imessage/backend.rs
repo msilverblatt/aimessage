@@ -38,7 +38,7 @@ impl MessageBackend for IMessageBackend {
         // Send via AppleScript (async fn — call with .await directly)
         applescript::send_message(&recipient, &body)
             .await
-            .map_err(|e| BackendError::RequestFailed(e))?;
+            .map_err(BackendError::RequestFailed)?;
 
         // Poll chat.db for the sent message (up to 3 seconds)
         let db_path = self.config.chat_db_path.clone();
@@ -46,7 +46,7 @@ impl MessageBackend for IMessageBackend {
         let poll_recipient = recipient.clone();
         let result = tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
+                .map_err(BackendError::Unavailable)?;
 
             for _ in 0..15 {
                 std::thread::sleep(std::time::Duration::from_millis(200));
@@ -80,8 +80,8 @@ impl MessageBackend for IMessageBackend {
         let mid = message_id.to_string();
         let guid = tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.guid_for_rowid(&mid).map_err(|e| BackendError::NotFound(e))
+                .map_err(BackendError::Unavailable)?;
+            chatdb.guid_for_rowid(&mid).map_err(BackendError::NotFound)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))??;
@@ -97,8 +97,8 @@ impl MessageBackend for IMessageBackend {
         let db_path = self.config.chat_db_path.clone();
         tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.get_messages(&query).map_err(|e| BackendError::RequestFailed(e))
+                .map_err(BackendError::Unavailable)?;
+            chatdb.get_messages(&query).map_err(BackendError::RequestFailed)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -109,8 +109,8 @@ impl MessageBackend for IMessageBackend {
         let id = id.to_string();
         tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.get_message(&id).map_err(|e| BackendError::NotFound(e))
+                .map_err(BackendError::Unavailable)?;
+            chatdb.get_message(&id).map_err(BackendError::NotFound)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -120,8 +120,8 @@ impl MessageBackend for IMessageBackend {
         let db_path = self.config.chat_db_path.clone();
         tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.get_conversations(&query).map_err(|e| BackendError::RequestFailed(e))
+                .map_err(BackendError::Unavailable)?;
+            chatdb.get_conversations(&query).map_err(BackendError::RequestFailed)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -132,8 +132,8 @@ impl MessageBackend for IMessageBackend {
         let id = id.to_string();
         tokio::task::spawn_blocking(move || {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.get_conversation(&id).map_err(|e| BackendError::NotFound(e))
+                .map_err(BackendError::Unavailable)?;
+            chatdb.get_conversation(&id).map_err(BackendError::NotFound)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -147,13 +147,13 @@ impl MessageBackend for IMessageBackend {
 
         // Get starting ROWID from state table (resume after restart)
         let start_rowid = storage.get_last_rowid()
-            .map_err(|e| BackendError::RequestFailed(e))?;
+            .map_err(BackendError::RequestFailed)?;
 
         // If no saved state, start from current max to avoid replaying entire history
         let start_rowid = if start_rowid == 0 {
             let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(|e| BackendError::Unavailable(e))?;
-            chatdb.get_max_rowid().map_err(|e| BackendError::RequestFailed(e))?
+                .map_err(BackendError::Unavailable)?;
+            chatdb.get_max_rowid().map_err(BackendError::RequestFailed)?
         } else {
             start_rowid
         };

@@ -56,9 +56,14 @@ pub struct HealthResponse {
     pub backend: BackendHealthResponse,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SendReactionBody {
+    pub reaction: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BackendHealthResponse {
     pub connected: bool,
-    pub backend_type: String,
+    pub private_api_available: bool,
     pub message: Option<String>,
 }

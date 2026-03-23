@@ -1,5 +1,4 @@
 mod api;
-mod backends;
 mod config;
 mod core_layer;
 mod imessage;
@@ -8,9 +7,9 @@ mod storage;
 use std::sync::Arc;
 
 use api::handlers::AppState;
-use backends::bluebubbles::BlueBubblesBackend;
 use core_layer::backend::MessageBackend;
 use core_layer::webhook::WebhookDispatcher;
+use imessage::backend::IMessageBackend;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -34,7 +33,6 @@ async fn main() {
     tracing::info!(
         host = %config.server.host,
         port = %config.server.port,
-        backend = %config.backend.backend_type,
         "Config loaded"
     );
 
@@ -45,19 +43,24 @@ async fn main() {
     );
     tracing::info!(path = %db_path.display(), "Database initialized");
 
-    // Init backend
-    let bb_config = config
-        .backend
-        .bluebubbles
-        .clone()
-        .expect("BlueBubbles config missing");
-    let backend = Arc::new(BlueBubblesBackend::new(bb_config, config.server.port));
+    // Check Automation permission (spec requirement: verify on startup)
+    if let Err(e) = imessage::applescript::check_automation_permission().await {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+    tracing::info!("Automation permission verified");
 
-    // Start backend and get message receiver
+    // Init iMessage backend
+    let backend = Arc::new(IMessageBackend::new(
+        config.imessage.clone(),
+        storage.clone(),
+    ));
+
+    // Start backend — begins polling chat.db
     let receiver = backend
         .start()
         .await
-        .expect("Failed to start backend");
+        .expect("Failed to start iMessage backend");
 
     // Start webhook dispatcher
     let dispatcher = WebhookDispatcher::new(storage.clone());
@@ -78,10 +81,7 @@ async fn main() {
         .await
         .expect("Failed to bind");
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-    )
-    .await
-    .expect("Server error");
+    axum::serve(listener, app)
+        .await
+        .expect("Server error");
 }
