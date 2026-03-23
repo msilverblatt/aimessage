@@ -116,7 +116,7 @@ impl MessageBackend for BlueBubblesBackend {
             .and_then(|d| d.as_array())
             .ok_or_else(|| BackendError::RequestFailed("Unexpected BB response format".to_string()))?;
 
-        Ok(data.iter().filter_map(|v| bb_parse::parse_bb_message(v)).collect())
+        Ok(data.iter().filter_map(bb_parse::parse_bb_message).collect())
     }
 
     async fn get_message(&self, id: &str) -> Result<Message, BackendError> {
@@ -181,7 +181,7 @@ impl MessageBackend for BlueBubblesBackend {
             .and_then(|d| d.as_array())
             .ok_or_else(|| BackendError::RequestFailed("Unexpected BB response format".to_string()))?;
 
-        Ok(data.iter().filter_map(|v| bb_parse::parse_bb_chat(v)).collect())
+        Ok(data.iter().filter_map(bb_parse::parse_bb_chat).collect())
     }
 
     async fn get_conversation(&self, id: &str) -> Result<Conversation, BackendError> {
