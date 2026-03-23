@@ -1,3 +1,4 @@
+mod api;
 mod config;
 mod core_layer;
 mod storage;
