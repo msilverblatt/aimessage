@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
-    pub backend: BackendConfig,
+    pub imessage: IMessageConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,16 +21,10 @@ pub struct AuthConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackendConfig {
-    #[serde(rename = "type")]
-    pub backend_type: String,
-    pub bluebubbles: Option<BlueBubblesConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlueBubblesConfig {
-    pub url: String,
-    pub password: String,
+pub struct IMessageConfig {
+    pub chat_db_path: String,
+    pub poll_interval_ms: u64,
+    pub private_api: bool,
 }
 
 impl Config {
@@ -42,6 +36,14 @@ impl Config {
 
     pub fn config_path() -> PathBuf {
         Self::config_dir().join("config.toml")
+    }
+
+    pub fn default_chat_db_path() -> String {
+        dirs::home_dir()
+            .expect("Could not determine home directory")
+            .join("Library/Messages/chat.db")
+            .to_string_lossy()
+            .to_string()
     }
 
     pub fn load() -> Result<Self, String> {
@@ -66,20 +68,15 @@ impl Config {
             return Err("API key not configured. Edit ~/.aimessage/config.toml".to_string());
         }
 
-        match self.backend.backend_type.as_str() {
-            "bluebubbles" => {
-                let bb = self.backend.bluebubbles.as_ref().ok_or(
-                    "backend.type is 'bluebubbles' but [backend.bluebubbles] section is missing"
-                        .to_string(),
-                )?;
-                if bb.password.is_empty() || bb.password == "CHANGE_ME" {
-                    return Err(
-                        "BlueBubbles password not configured. Edit ~/.aimessage/config.toml"
-                            .to_string(),
-                    );
-                }
-            }
-            other => return Err(format!("Unknown backend type: {}", other)),
+        let db_path = Path::new(&self.imessage.chat_db_path);
+        if !db_path.exists() {
+            return Err(format!(
+                "chat.db not found at {}.\n\
+                 This usually means Full Disk Access is not granted.\n\
+                 Go to: System Settings → Privacy & Security → Full Disk Access\n\
+                 Add your terminal or the aimessage binary.",
+                self.imessage.chat_db_path
+            ));
         }
 
         Ok(())
@@ -96,12 +93,10 @@ impl Config {
             auth: AuthConfig {
                 api_key: api_key.clone(),
             },
-            backend: BackendConfig {
-                backend_type: "bluebubbles".to_string(),
-                bluebubbles: Some(BlueBubblesConfig {
-                    url: "http://localhost:1234".to_string(),
-                    password: "CHANGE_ME".to_string(),
-                }),
+            imessage: IMessageConfig {
+                chat_db_path: Self::default_chat_db_path(),
+                poll_interval_ms: 1000,
+                private_api: false,
             },
         };
 
@@ -111,7 +106,7 @@ impl Config {
         fs::write(path, &content).expect("Failed to write default config");
 
         format!(
-            "Generated default config at {}.\nYour API key: {}\nEdit the file to set your BlueBubbles password, then restart.",
+            "Generated default config at {}.\nYour API key: {}\nThe server will auto-detect your iMessage database. Just restart.",
             path.display(),
             api_key
         )
