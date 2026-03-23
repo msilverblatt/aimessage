@@ -1,1 +1,177 @@
-// Handler functions — implemented in Task 6
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    Json,
+};
+use std::sync::Arc;
+
+use crate::api::types::*;
+use crate::core_layer::backend::MessageBackend;
+use crate::core_layer::errors::ApiError;
+use crate::core_layer::types::{MessageQuery, PaginationQuery, SendMessageRequest};
+use crate::storage::sqlite::Storage;
+
+pub struct AppState {
+    pub backend: Arc<dyn MessageBackend>,
+    pub storage: Arc<Storage>,
+}
+
+// Messages
+
+pub async fn send_message(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SendMessageBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = SendMessageRequest {
+        recipient: body.recipient,
+        body: body.body,
+        attachments: body.attachments,
+    };
+    let message = state.backend.send_message(request).await?;
+    Ok(Json(serde_json::to_value(message).unwrap()))
+}
+
+pub async fn list_messages(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<MessageQueryParams>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let query = MessageQuery {
+        conversation_id: params.conversation_id,
+        since: params.since,
+        limit: params.limit.unwrap_or(50).min(200),
+        offset: params.offset.unwrap_or(0),
+    };
+    let messages = state.backend.get_messages(query).await?;
+    let count = messages.len();
+    Ok(Json(serde_json::json!({ "data": messages, "count": count })))
+}
+
+pub async fn get_message(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let message = state.backend.get_message(&id).await?;
+    Ok(Json(serde_json::to_value(message).unwrap()))
+}
+
+// Conversations
+
+pub async fn list_conversations(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let query = PaginationQuery {
+        limit: params.limit.unwrap_or(50).min(200),
+        offset: params.offset.unwrap_or(0),
+    };
+    let conversations = state.backend.get_conversations(query).await?;
+    let count = conversations.len();
+    Ok(Json(serde_json::json!({ "data": conversations, "count": count })))
+}
+
+pub async fn get_conversation(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let conversation = state.backend.get_conversation(&id).await?;
+    Ok(Json(serde_json::to_value(conversation).unwrap()))
+}
+
+// Webhooks
+
+pub async fn create_webhook(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateWebhookBody>,
+) -> Result<Json<WebhookResponse>, ApiError> {
+    let record = state
+        .storage
+        .create_or_update_webhook(&body.url, &body.events)
+        .map_err(ApiError::Storage)?;
+    Ok(Json(WebhookResponse::from(record)))
+}
+
+pub async fn list_webhooks(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let webhooks = state
+        .storage
+        .list_webhooks()
+        .map_err(ApiError::Storage)?;
+    let responses: Vec<WebhookResponse> = webhooks.into_iter().map(WebhookResponse::from).collect();
+    let count = responses.len();
+    Ok(Json(serde_json::json!({ "data": responses, "count": count })))
+}
+
+pub async fn delete_webhook(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let deleted = state
+        .storage
+        .delete_webhook(&id)
+        .map_err(ApiError::Storage)?;
+    if deleted {
+        Ok(Json(serde_json::json!({ "deleted": true })))
+    } else {
+        Err(ApiError::Backend(crate::core_layer::errors::BackendError::NotFound(
+            format!("Webhook {} not found", id),
+        )))
+    }
+}
+
+// Health
+
+pub async fn health(
+    State(state): State<Arc<AppState>>,
+) -> Json<HealthResponse> {
+    let backend_status = state.backend.health_check().await;
+    match backend_status {
+        Ok(status) => Json(HealthResponse {
+            status: "ok".to_string(),
+            backend: BackendHealthResponse {
+                connected: status.connected,
+                backend_type: status.backend_type,
+                message: status.message,
+            },
+        }),
+        Err(e) => Json(HealthResponse {
+            status: "degraded".to_string(),
+            backend: BackendHealthResponse {
+                connected: false,
+                backend_type: "unknown".to_string(),
+                message: Some(e.to_string()),
+            },
+        }),
+    }
+}
+
+// Internal: BlueBubbles webhook receiver
+
+pub async fn bb_webhook_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> StatusCode {
+    tracing::info!("Received BlueBubbles webhook");
+
+    let event_type = body.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+
+    if event_type != "new-message" {
+        tracing::debug!(event_type = %event_type, "Ignoring non-message BB webhook");
+        return StatusCode::OK;
+    }
+
+    let data = match body.get("data") {
+        Some(d) => d,
+        None => {
+            tracing::warn!("BB webhook missing data field");
+            return StatusCode::OK;
+        }
+    };
+
+    let message = crate::core_layer::bb_parse::parse_bb_message(data);
+    if let Some(msg) = message {
+        state.backend.push_incoming_message(msg).await;
+    }
+
+    StatusCode::OK
+}
