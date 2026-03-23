@@ -148,9 +148,14 @@ pub async fn health(
 // Internal: BlueBubbles webhook receiver
 
 pub async fn bb_webhook_handler(
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
+    if !addr.ip().is_loopback() {
+        tracing::warn!(remote_addr = %addr, "Rejected non-localhost request to internal endpoint");
+        return StatusCode::FORBIDDEN;
+    }
     tracing::info!("Received BlueBubbles webhook");
 
     let event_type = body.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
