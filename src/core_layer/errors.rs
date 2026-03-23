@@ -13,6 +13,8 @@ pub enum BackendError {
     RequestFailed(String),
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
+    #[error("Feature unavailable: {0}")]
+    FeatureUnavailable(String),
 }
 
 #[derive(Debug, Error)]
@@ -38,6 +40,9 @@ impl IntoResponse for ApiError {
             }
             ApiError::Backend(BackendError::InvalidRequest(_)) => {
                 (StatusCode::BAD_REQUEST, self.to_string())
+            }
+            ApiError::Backend(BackendError::FeatureUnavailable(_)) => {
+                (StatusCode::NOT_IMPLEMENTED, self.to_string())
             }
             ApiError::Backend(BackendError::RequestFailed(_)) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
