@@ -19,4 +19,6 @@ pub trait MessageBackend: Send + Sync {
     async fn start(&self) -> Result<mpsc::Receiver<Message>, BackendError>;
     async fn shutdown(&self) -> Result<(), BackendError>;
     async fn health_check(&self) -> Result<BackendStatus, BackendError>;
+    /// Push an incoming message into the backend's channel (used by internal webhook handler)
+    async fn push_incoming_message(&self, message: Message);
 }
