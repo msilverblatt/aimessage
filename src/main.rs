@@ -2,6 +2,7 @@ mod api;
 mod backends;
 mod config;
 mod core_layer;
+mod imessage;
 mod storage;
 
 use std::sync::Arc;
