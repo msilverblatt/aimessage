@@ -3,6 +3,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use std::sync::Arc;
 
 use super::auth::{require_api_key, ApiKey};
@@ -30,5 +31,11 @@ pub fn build_router(state: Arc<AppState>, api_key: String) -> Router {
 
     Router::new()
         .nest("/api/v1", authed_routes.merge(public_routes))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .with_state(state)
 }
