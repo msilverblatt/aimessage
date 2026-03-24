@@ -1,6 +1,6 @@
 use reqwest::Client;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 use tracing;
 
 use crate::core_layer::types::Event;
@@ -19,13 +19,21 @@ impl WebhookDispatcher {
         }
     }
 
-    pub fn spawn(self, mut receiver: mpsc::Receiver<Event>) {
+    pub fn spawn(self, mut receiver: broadcast::Receiver<Event>) {
         tokio::spawn(async move {
             tracing::info!("Webhook dispatcher started");
-            while let Some(event) = receiver.recv().await {
-                self.handle_event(&event).await;
+            loop {
+                match receiver.recv().await {
+                    Ok(event) => self.handle_event(&event).await,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "Webhook dispatcher lagged, skipping events");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        tracing::info!("Webhook dispatcher stopped");
+                        break;
+                    }
+                }
             }
-            tracing::info!("Webhook dispatcher stopped");
         });
     }
 

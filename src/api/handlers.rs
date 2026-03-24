@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
@@ -7,12 +8,14 @@ use std::sync::Arc;
 use crate::api::types::*;
 use crate::core_layer::backend::MessageBackend;
 use crate::core_layer::errors::ApiError;
-use crate::core_layer::types::{MessageQuery, PaginationQuery, SendMessageRequest};
+use crate::core_layer::types::{Event, MessageQuery, PaginationQuery, SendMessageRequest};
 use crate::storage::sqlite::Storage;
 
 pub struct AppState {
     pub backend: Arc<dyn MessageBackend>,
     pub storage: Arc<Storage>,
+    pub event_sender: tokio::sync::broadcast::Sender<Event>,
+    pub api_key: String,
 }
 
 // Messages
@@ -143,6 +146,48 @@ pub async fn delete_webhook(
         Err(ApiError::Backend(crate::core_layer::errors::BackendError::NotFound(
             format!("Webhook {} not found", id),
         )))
+    }
+}
+
+// WebSocket
+
+pub async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<WsParams>,
+) -> impl IntoResponse {
+    if params.api_key != state.api_key {
+        return axum::response::Response::builder()
+            .status(401)
+            .body(axum::body::Body::empty())
+            .unwrap()
+            .into_response();
+    }
+    ws.on_upgrade(move |socket| handle_ws(socket, state))
+        .into_response()
+}
+
+async fn handle_ws(mut socket: axum::extract::ws::WebSocket, state: Arc<AppState>) {
+    let mut rx = state.event_sender.subscribe();
+    loop {
+        match rx.recv().await {
+            Ok(event) => {
+                let json = serde_json::to_string(&event).unwrap();
+                if socket
+                    .send(axum::extract::ws::Message::Text(json.into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(skipped = n, "WebSocket client lagged, skipping events");
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                break;
+            }
+        }
     }
 }
 

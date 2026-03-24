@@ -64,19 +64,21 @@ pub async fn run_server(config: config::Config) {
     ));
 
     // Start backend — begins polling chat.db
-    let receiver = backend
+    let event_sender = backend
         .start()
         .await
         .expect("Failed to start iMessage backend");
 
-    // Start webhook dispatcher
+    // Start webhook dispatcher (subscribes to the broadcast channel)
     let dispatcher = WebhookDispatcher::new(storage.clone());
-    dispatcher.spawn(receiver);
+    dispatcher.spawn(event_sender.subscribe());
 
     // Build app state and router
     let state = Arc::new(AppState {
         backend: backend as Arc<dyn MessageBackend>,
         storage: storage.clone(),
+        event_sender,
+        api_key: config.auth.api_key.clone(),
     });
 
     let app = api::routes::build_router(state, config.auth.api_key);

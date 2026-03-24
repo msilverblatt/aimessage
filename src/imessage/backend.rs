@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 use tracing;
 
 use crate::config::IMessageConfig;
@@ -35,10 +35,19 @@ impl MessageBackend for IMessageBackend {
         let recipient = request.recipient.clone();
         let body = request.body.clone();
 
-        // Send via AppleScript (async fn — call with .await directly)
-        applescript::send_message(&recipient, &body)
-            .await
-            .map_err(BackendError::RequestFailed)?;
+        // Send text body via AppleScript (if non-empty)
+        if !body.is_empty() {
+            applescript::send_message(&recipient, &body)
+                .await
+                .map_err(BackendError::RequestFailed)?;
+        }
+
+        // Send each attachment
+        for file_path in &request.attachments {
+            applescript::send_attachment(&recipient, file_path)
+                .await
+                .map_err(BackendError::RequestFailed)?;
+        }
 
         // Poll chat.db for the sent message (up to 3 seconds)
         let db_path = self.config.chat_db_path.clone();
@@ -139,11 +148,12 @@ impl MessageBackend for IMessageBackend {
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
     }
 
-    async fn start(&self) -> Result<mpsc::Receiver<Event>, BackendError> {
-        let (sender, receiver) = mpsc::channel(256);
+    async fn start(&self) -> Result<broadcast::Sender<Event>, BackendError> {
+        let (sender, _) = broadcast::channel(256);
         let db_path = self.config.chat_db_path.clone();
         let poll_interval = std::time::Duration::from_millis(self.config.poll_interval_ms);
         let storage = self.storage.clone();
+        let tx = sender.clone();
 
         // Get starting ROWID from state table (resume after restart)
         let start_rowid = storage.get_last_rowid()
@@ -182,10 +192,9 @@ impl MessageBackend for IMessageBackend {
                             }
                         }
                         for event in events {
-                            if sender.send(event).await.is_err() {
-                                tracing::error!("Event channel closed, stopping poller");
-                                return;
-                            }
+                            // send() on broadcast returns Err only if there are no receivers;
+                            // that's fine — just means no subscribers are connected yet.
+                            let _ = tx.send(event);
                         }
                     }
                     Ok(Err(e)) => {
@@ -198,7 +207,7 @@ impl MessageBackend for IMessageBackend {
             }
         });
 
-        Ok(receiver)
+        Ok(sender)
     }
 
     async fn shutdown(&self) -> Result<(), BackendError> {

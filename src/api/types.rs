@@ -68,3 +68,8 @@ pub struct BackendHealthResponse {
     pub private_api_available: bool,
     pub message: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct WsParams {
+    pub api_key: String,
+}

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 
 use super::errors::BackendError;
 use super::types::{
@@ -21,7 +21,7 @@ pub trait MessageBackend: Send + Sync {
     async fn get_conversation(&self, id: &str) -> Result<Conversation, BackendError>;
 
     // Lifecycle
-    async fn start(&self) -> Result<mpsc::Receiver<Event>, BackendError>;
+    async fn start(&self) -> Result<broadcast::Sender<Event>, BackendError>;
     async fn shutdown(&self) -> Result<(), BackendError>;
     async fn health_check(&self) -> Result<BackendStatus, BackendError>;
 }

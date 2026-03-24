@@ -25,7 +25,8 @@ pub fn build_router(state: Arc<AppState>, api_key: String) -> Router {
         .layer(axum::Extension(ApiKey(api_key)));
 
     let public_routes = Router::new()
-        .route("/health", get(handlers::health));
+        .route("/health", get(handlers::health))
+        .route("/ws", get(handlers::ws_handler));
 
     Router::new()
         .nest("/api/v1", authed_routes.merge(public_routes))
