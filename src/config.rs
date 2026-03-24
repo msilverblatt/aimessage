@@ -87,7 +87,7 @@ impl Config {
 
         let default = Config {
             server: ServerConfig {
-                host: "0.0.0.0".to_string(),
+                host: "127.0.0.1".to_string(),
                 port: 3001,
             },
             auth: AuthConfig {
@@ -104,6 +104,14 @@ impl Config {
         fs::create_dir_all(dir).expect("Failed to create config directory");
         let content = toml::to_string_pretty(&default).unwrap();
         fs::write(path, &content).expect("Failed to write default config");
+
+        // Restrict config file permissions to owner-only (contains API key)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::Permissions::from_mode(0o600);
+            fs::set_permissions(path, perms).expect("Failed to set config permissions");
+        }
 
         format!(
             "Generated default config at {}.\nYour API key: {}\nThe server will auto-detect your iMessage database. Just restart.",

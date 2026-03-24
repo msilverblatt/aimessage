@@ -7,8 +7,7 @@ AiMessage reads your iMessage database directly, sends messages and attachments 
 ## How it works
 
 - **Read path**: Polls `~/Library/Messages/chat.db` (SQLite) for new messages and reactions
-- **Write path**: Sends messages via `osascript` controlling Messages.app
-- **Advanced features** (optional): Reactions and typing indicators via Apple's private IMCore framework (requires SIP disabled)
+- **Write path**: Sends messages and attachments via `osascript` controlling Messages.app
 
 ## Requirements
 
@@ -59,7 +58,6 @@ api_key = "your-generated-uuid"
 [imessage]
 chat_db_path = "/Users/you/Library/Messages/chat.db"  # auto-detected
 poll_interval_ms = 1000                                 # how often to check for new messages
-private_api = false                                     # set true if SIP is disabled
 ```
 
 ## API
@@ -87,15 +85,11 @@ curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"reci
 # Send a message with an attachment
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"recipient": "+15551234567", "body": "Check this out", "attachments": ["/path/to/photo.png"]}' http://localhost:3001/api/v1/messages
 
-# React to a message (requires private_api = true)
-curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"reaction": "love"}' http://localhost:3001/api/v1/messages/12345/react
 ```
 
 Query parameters for `GET /messages`: `conversation_id`, `since` (ISO 8601), `limit` (default 50, max 200), `offset`.
 
 Incoming messages include attachment file paths in the `attachments` array (e.g., `/Users/you/Library/Messages/Attachments/.../IMG_1234.jpeg`).
-
-Reaction types: `love`, `thumbsup`, `thumbsdown`, `haha`, `exclamation`, `question`.
 
 ### Conversations
 
@@ -105,9 +99,6 @@ curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/conversations?limit=10"
 
 # Get a specific conversation
 curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/conversations/iMessage;-;+15551234567"
-
-# Send typing indicator (requires private_api = true)
-curl -X POST -H "X-API-Key: $KEY" http://localhost:3001/api/v1/conversations/iMessage;-;+15551234567/typing
 ```
 
 ### Webhooks
@@ -182,7 +173,6 @@ curl http://localhost:3001/api/v1/health
 |-----------|-------------|-------------|
 | Full Disk Access | Reading chat.db | System Settings → Privacy & Security → Full Disk Access → add AiMessage.app |
 | Automation | Sending messages via AppleScript | Prompted on first launch, or System Settings → Automation |
-| SIP disabled | Reactions, typing indicators (optional) | Boot to Recovery Mode → `csrutil disable` |
 
 ## Development
 
