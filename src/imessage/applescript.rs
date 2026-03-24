@@ -2,23 +2,27 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-/// Send a plain text message via AppleScript
+/// Send a plain text message via AppleScript.
+/// User input is passed via environment variables to prevent AppleScript injection.
 pub async fn send_message(recipient: &str, body: &str) -> Result<(), String> {
-    let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
-    let escaped_recipient = recipient.replace('\\', "\\\\").replace('"', "\\\"");
-
-    let script = format!(
-        r#"tell application "Messages"
+    let script = r#"
+set recipientAddr to system attribute "AIMSG_RECIPIENT"
+set messageBody to system attribute "AIMSG_BODY"
+tell application "Messages"
     set targetService to 1st service whose service type = iMessage
-    set targetBuddy to buddy "{}" of targetService
-    send "{}" to targetBuddy
-end tell"#,
-        escaped_recipient, escaped_body
-    );
+    set targetBuddy to buddy recipientAddr of targetService
+    send messageBody to targetBuddy
+end tell
+"#;
 
     let output = timeout(
         Duration::from_secs(10),
-        Command::new("osascript").arg("-e").arg(&script).output(),
+        Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .env("AIMSG_RECIPIENT", recipient)
+            .env("AIMSG_BODY", body)
+            .output(),
     )
     .await
     .map_err(|_| "AppleScript timed out after 10 seconds".to_string())?
@@ -32,23 +36,32 @@ end tell"#,
     }
 }
 
-/// Send a file attachment via AppleScript
+/// Send a file attachment via AppleScript.
+/// File path is passed via environment variable to prevent injection.
 pub async fn send_attachment(recipient: &str, file_path: &str) -> Result<(), String> {
-    let escaped_recipient = recipient.replace('\\', "\\\\").replace('"', "\\\"");
-    let escaped_path = file_path.replace('\\', "\\\\").replace('"', "\\\"");
+    // Validate the file exists before trying to send
+    if !std::path::Path::new(file_path).exists() {
+        return Err(format!("Attachment file not found: {}", file_path));
+    }
 
-    let script = format!(
-        r#"tell application "Messages"
+    let script = r#"
+set recipientAddr to system attribute "AIMSG_RECIPIENT"
+set filePath to system attribute "AIMSG_FILE"
+tell application "Messages"
     set targetService to 1st service whose service type = iMessage
-    set targetBuddy to buddy "{}" of targetService
-    send POSIX file "{}" to targetBuddy
-end tell"#,
-        escaped_recipient, escaped_path
-    );
+    set targetBuddy to buddy recipientAddr of targetService
+    send POSIX file filePath to targetBuddy
+end tell
+"#;
 
     let output = timeout(
         Duration::from_secs(10),
-        Command::new("osascript").arg("-e").arg(&script).output(),
+        Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .env("AIMSG_RECIPIENT", recipient)
+            .env("AIMSG_FILE", file_path)
+            .output(),
     )
     .await
     .map_err(|_| "AppleScript timed out after 10 seconds".to_string())?

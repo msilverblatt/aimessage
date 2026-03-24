@@ -31,6 +31,24 @@ impl ChatDb {
         Ok(ChatDb { conn })
     }
 
+    /// Check if this database stores timestamps in nanoseconds (macOS Ventura+)
+    fn uses_nanoseconds(&self) -> bool {
+        self.conn
+            .query_row("SELECT MAX(date) FROM message", [], |row| row.get::<_, i64>(0))
+            .map(|max_date| max_date > NANO_THRESHOLD)
+            .unwrap_or(false)
+    }
+
+    /// Convert a Unix timestamp to Mac absolute time, matching the DB's format (seconds or nanos)
+    fn unix_to_mac_time(&self, unix_ts: i64) -> i64 {
+        let mac_seconds = unix_ts - MAC_EPOCH_OFFSET;
+        if self.uses_nanoseconds() {
+            mac_seconds * 1_000_000_000
+        } else {
+            mac_seconds
+        }
+    }
+
     /// Convert a Mac absolute time to UTC DateTime
     fn mac_to_utc(mac_time: i64) -> chrono::DateTime<chrono::Utc> {
         let seconds = if mac_time > NANO_THRESHOLD {
@@ -209,7 +227,7 @@ impl ChatDb {
         }
 
         if let Some(since) = query.since {
-            let mac_time = since.timestamp() - MAC_EPOCH_OFFSET;
+            let mac_time = self.unix_to_mac_time(since.timestamp());
             sql.push_str(&format!(" AND m.date > ?{}", param_idx));
             param_values.push(Box::new(mac_time));
             param_idx += 1;

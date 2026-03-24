@@ -38,7 +38,6 @@ dependencies = [
  "axum",
  "chrono",
  "dirs",
- "rand",
  "reqwest",
  "rusqlite",
  "serde",
@@ -47,7 +46,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
- "tower-http",
  "tracing",
  "tracing-subscriber",
  "tray-icon",
@@ -3009,7 +3007,6 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
