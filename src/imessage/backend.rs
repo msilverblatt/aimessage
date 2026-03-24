@@ -54,12 +54,12 @@ impl MessageBackend for IMessageBackend {
         let poll_body = body.clone();
         let poll_recipient = recipient.clone();
         let result = tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-
             for _ in 0..15 {
                 std::thread::sleep(std::time::Duration::from_millis(200));
-                if let Ok(Some(msg)) = chatdb.find_sent_message(&poll_recipient, &poll_body) {
+                let found = ChatDb::with_connection(&db_path, |chatdb| {
+                    chatdb.find_sent_message(&poll_recipient, &poll_body)
+                }).map_err(BackendError::Unavailable)?;
+                if let Some(msg) = found {
                     return Ok(msg);
                 }
             }
@@ -88,9 +88,8 @@ impl MessageBackend for IMessageBackend {
         let db_path = self.config.chat_db_path.clone();
         let mid = message_id.to_string();
         let guid = tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.guid_for_rowid(&mid).map_err(BackendError::NotFound)
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.guid_for_rowid(&mid))
+                .map_err(BackendError::Unavailable)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))??;
@@ -105,9 +104,8 @@ impl MessageBackend for IMessageBackend {
     async fn get_messages(&self, query: MessageQuery) -> Result<Vec<Message>, BackendError> {
         let db_path = self.config.chat_db_path.clone();
         tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.get_messages(&query).map_err(BackendError::RequestFailed)
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.get_messages(&query))
+                .map_err(BackendError::Unavailable)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -117,9 +115,8 @@ impl MessageBackend for IMessageBackend {
         let db_path = self.config.chat_db_path.clone();
         let id = id.to_string();
         tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.get_message(&id).map_err(BackendError::NotFound)
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.get_message(&id))
+                .map_err(BackendError::Unavailable)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -128,9 +125,8 @@ impl MessageBackend for IMessageBackend {
     async fn get_conversations(&self, query: PaginationQuery) -> Result<Vec<Conversation>, BackendError> {
         let db_path = self.config.chat_db_path.clone();
         tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.get_conversations(&query).map_err(BackendError::RequestFailed)
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.get_conversations(&query))
+                .map_err(BackendError::Unavailable)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -140,9 +136,8 @@ impl MessageBackend for IMessageBackend {
         let db_path = self.config.chat_db_path.clone();
         let id = id.to_string();
         tokio::task::spawn_blocking(move || {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.get_conversation(&id).map_err(BackendError::NotFound)
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.get_conversation(&id))
+                .map_err(BackendError::Unavailable)
         })
         .await
         .map_err(|e| BackendError::RequestFailed(format!("Task join error: {}", e)))?
@@ -161,9 +156,8 @@ impl MessageBackend for IMessageBackend {
 
         // If no saved state, start from current max to avoid replaying entire history
         let start_rowid = if start_rowid == 0 {
-            let chatdb = ChatDb::open(std::path::Path::new(&db_path))
-                .map_err(BackendError::Unavailable)?;
-            chatdb.get_max_rowid().map_err(BackendError::RequestFailed)?
+            ChatDb::with_connection(&db_path, |chatdb| chatdb.get_max_rowid())
+                .map_err(BackendError::Unavailable)?
         } else {
             start_rowid
         };
@@ -179,8 +173,9 @@ impl MessageBackend for IMessageBackend {
                 let db_path_clone = db_path.clone();
                 let current_rowid = last_rowid;
                 let poll_result = tokio::task::spawn_blocking(move || {
-                    let chatdb = ChatDb::open(std::path::Path::new(&db_path_clone))?;
-                    chatdb.poll_new_events(current_rowid)
+                    ChatDb::with_connection(&db_path_clone, |chatdb| {
+                        chatdb.poll_new_events(current_rowid)
+                    })
                 }).await;
 
                 match poll_result {
@@ -218,7 +213,7 @@ impl MessageBackend for IMessageBackend {
         // Check chat.db is readable
         let db_path = self.config.chat_db_path.clone();
         let connected = tokio::task::spawn_blocking(move || {
-            ChatDb::open(std::path::Path::new(&db_path)).is_ok()
+            ChatDb::with_connection(&db_path, |_| Ok(())).is_ok()
         }).await.unwrap_or(false);
 
         Ok(BackendStatus {

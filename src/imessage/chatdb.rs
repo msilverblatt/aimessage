@@ -1,7 +1,12 @@
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use std::cell::RefCell;
 use std::path::Path;
 
 use crate::core_layer::types::*;
+
+thread_local! {
+    static CHATDB_CONN: RefCell<Option<ChatDb>> = RefCell::new(None);
+}
 
 fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
@@ -34,6 +39,20 @@ impl ChatDb {
             .map(|max_date| max_date > NANO_THRESHOLD)
             .unwrap_or(false);
         Ok(ChatDb { conn, nano_timestamps })
+    }
+
+    /// Run `f` with a thread-local cached connection, opening one lazily if needed.
+    pub fn with_connection<F, T>(path: &str, f: F) -> Result<T, String>
+    where
+        F: FnOnce(&ChatDb) -> Result<T, String>,
+    {
+        CHATDB_CONN.with(|cell| {
+            let mut opt = cell.borrow_mut();
+            if opt.is_none() {
+                *opt = Some(ChatDb::open(Path::new(path))?);
+            }
+            f(opt.as_ref().unwrap())
+        })
     }
 
     /// Convert a Unix timestamp to Mac absolute time, matching the DB's format (seconds or nanos)
