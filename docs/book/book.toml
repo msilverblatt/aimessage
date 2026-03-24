@@ -1,0 +1,15 @@
+[book]
+title = "AiMessage"
+description = "Turn any Mac into an iMessage API server"
+authors = ["msilverblatt"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../../book-output"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/msilverblatt/aimessage"
+edit-url-template = "https://github.com/msilverblatt/aimessage/edit/master/docs/book/src/{path}"

@@ -1,6 +1,8 @@
 /target
 *.db
 *.db-journal
+/book-output
+.DS_Store
 
 
 # Added by cargo
