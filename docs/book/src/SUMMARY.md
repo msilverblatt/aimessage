@@ -16,7 +16,6 @@
 - [Conversations](./api/conversations.md)
 - [Webhooks](./api/webhooks.md)
 - [WebSocket](./api/websocket.md)
-- [Reactions & Typing](./api/reactions-typing.md)
 - [Health](./api/health.md)
 
 # Architecture
