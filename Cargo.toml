@@ -25,3 +25,4 @@ tray-icon = "0.19"
 tao = "0.34"
 arboard = "3"
 tower-http = { version = "0.6", features = ["cors"] }
+governor = "0.8"

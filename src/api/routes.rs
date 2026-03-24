@@ -8,9 +8,12 @@ use std::sync::Arc;
 
 use super::auth::{require_api_key, ApiKey};
 use super::handlers;
+use super::ratelimit;
 use crate::api::handlers::AppState;
 
 pub fn build_router(state: Arc<AppState>, api_key: String) -> Router {
+    let limiter = ratelimit::create_limiter(60);
+
     let authed_routes = Router::new()
         .route("/messages", post(handlers::send_message))
         .route("/messages", get(handlers::list_messages))
@@ -22,6 +25,8 @@ pub fn build_router(state: Arc<AppState>, api_key: String) -> Router {
         .route("/webhooks", post(handlers::create_webhook))
         .route("/webhooks", get(handlers::list_webhooks))
         .route("/webhooks/{id}", delete(handlers::delete_webhook))
+        .layer(middleware::from_fn(ratelimit::rate_limit))
+        .layer(axum::Extension(limiter))
         .layer(middleware::from_fn(require_api_key))
         .layer(axum::Extension(ApiKey(api_key)));
 
