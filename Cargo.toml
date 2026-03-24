@@ -20,3 +20,6 @@ tower-http = { version = "0.6", features = ["trace"] }
 rand = "0.9"
 dirs = "6"
 thiserror = "2"
+tray-icon = "0.19"
+tao = "0.34"
+arboard = "3"

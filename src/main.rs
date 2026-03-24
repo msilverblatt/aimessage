@@ -3,6 +3,7 @@ mod config;
 mod core_layer;
 mod imessage;
 mod storage;
+mod tray;
 
 use std::sync::Arc;
 
@@ -12,8 +13,7 @@ use core_layer::webhook::WebhookDispatcher;
 use imessage::backend::IMessageBackend;
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(
@@ -30,12 +30,19 @@ async fn main() {
         }
     };
 
+    let api_key = config.auth.api_key.clone();
+
     tracing::info!(
         host = %config.server.host,
         port = %config.server.port,
         "Config loaded"
     );
 
+    // Tray icon on main thread, server on background thread
+    tray::run(api_key, config);
+}
+
+pub async fn run_server(config: config::Config) {
     // Init storage
     let db_path = config::Config::config_dir().join("aimessage.db");
     let storage = Arc::new(
@@ -43,7 +50,7 @@ async fn main() {
     );
     tracing::info!(path = %db_path.display(), "Database initialized");
 
-    // Check Automation permission (spec requirement: verify on startup)
+    // Check Automation permission
     if let Err(e) = imessage::applescript::check_automation_permission().await {
         eprintln!("{}", e);
         std::process::exit(1);
