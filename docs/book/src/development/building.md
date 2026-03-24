@@ -60,3 +60,5 @@ This compiles a release build and packages it into `bundle/AiMessage.app`. Run t
 ```bash
 cargo test
 ```
+
+There are 16 unit tests covering core logic. No special setup is required — the tests do not need a running Messages.app or database access.

@@ -8,7 +8,7 @@
 
 ## First-run behavior
 
-On the very first launch, AiMessage generates a config file with a random API key and then exits. This is intentional — it gives you a chance to review and adjust the config before the server starts accepting requests.
+On the very first launch, AiMessage generates a config file with a random API key and then exits. This is intentional — it gives you a chance to review and adjust the config before the server starts accepting requests. The config file is created with permissions `0600` (owner read/write only).
 
 ```
 Config generated at /Users/you/.aimessage/config.toml
@@ -21,7 +21,7 @@ Launch AiMessage a second time to start the server.
 
 ```toml
 [server]
-host = "0.0.0.0"       # Interface to bind. Use "127.0.0.1" to restrict to localhost only.
+host = "127.0.0.1"     # Interface to bind. Use "0.0.0.0" to expose to the network.
 port = 3001             # Port the HTTP server listens on.
 
 [auth]
@@ -38,7 +38,7 @@ poll_interval_ms = 1000                                  # How often (in millise
 
 | Field | Default | Description |
 |---|---|---|
-| `host` | `"0.0.0.0"` | Bind address. Use `"127.0.0.1"` to accept only local connections. |
+| `host` | `"127.0.0.1"` | Bind address. Defaults to localhost only. Use `"0.0.0.0"` to accept connections from the network. |
 | `port` | `3001` | TCP port for the HTTP server. |
 
 ### `[auth]`

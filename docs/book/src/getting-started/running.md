@@ -12,7 +12,7 @@ AiMessage runs as a menu bar application. When running, its icon appears in the 
 
 1. **First launch**: Config is generated at `~/.aimessage/config.toml` and the process exits. Check the generated file.
 2. **Second launch**: Server starts. On this launch (or the first launch after config already exists), macOS may prompt for Automation permission — click OK to allow AiMessage to control Messages.app.
-3. **Server is running**: The menu bar icon appears. The HTTP server is listening on the configured host and port (default `0.0.0.0:3001`).
+3. **Server is running**: The menu bar icon appears. The HTTP server is listening on the configured host and port (default `127.0.0.1:3001`).
 
 ## Verify the server is running
 
@@ -43,6 +43,10 @@ To enable verbose logging:
 ```bash
 RUST_LOG=aimessage=debug cargo run
 ```
+
+## Stopping the server
+
+Send `Ctrl+C` or `SIGTERM` to stop the server. AiMessage performs a graceful shutdown — it drains in-flight connections before exiting, so no requests are cut off mid-response.
 
 ## State persistence
 

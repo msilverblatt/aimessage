@@ -41,6 +41,10 @@ ws://localhost:3001/api/v1/ws?api_key=your-api-key
 
 See [WebSocket](./websocket.md) for full details.
 
+## Rate limiting
+
+The API enforces a global limit of **60 requests per minute**. Requests that exceed this limit receive `429 Too Many Requests`. The rate limit applies across all endpoints (authenticated or not).
+
 ## Health endpoint
 
 `GET /api/v1/health` is unauthenticated and can be used to verify the server is running without a key.

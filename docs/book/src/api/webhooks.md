@@ -25,10 +25,24 @@ curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url"
 
 ### With a secret
 
-The `secret` field is optional. When provided, AiMessage includes an `X-Webhook-Secret` header on every delivery with the value you supplied. Use this to verify that requests to your listener come from AiMessage.
+The `secret` field is optional. When provided, AiMessage signs every delivery using HMAC-SHA256 and includes the signature in the `X-Webhook-Signature` header in the format `sha256=<hex>`.
 
 ```bash
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url": "http://127.0.0.1:8080/webhook", "events": ["message.received"], "secret": "my-secret-token"}' http://localhost:3001/api/v1/webhooks
+```
+
+**Verifying the signature:**
+
+Compute `HMAC-SHA256(key=secret, message=raw_request_body)` and compare the hex digest to the value after `sha256=` in the `X-Webhook-Signature` header. Use a constant-time comparison to prevent timing attacks.
+
+Python example:
+
+```python
+import hmac, hashlib
+
+def verify(secret: str, body: bytes, header: str) -> bool:
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, header)
 ```
 
 For local integrations, binding your webhook listener to `127.0.0.1` (as shown above) prevents external access and is recommended for single-machine setups.

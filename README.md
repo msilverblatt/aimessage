@@ -49,7 +49,7 @@ curl http://localhost:3001/api/v1/health
 
 ```toml
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 3001
 
 [auth]
@@ -59,6 +59,8 @@ api_key = "your-generated-uuid"
 chat_db_path = "/Users/you/Library/Messages/chat.db"  # auto-detected
 poll_interval_ms = 1000                                 # how often to check for new messages
 ```
+
+The default bind address is `127.0.0.1` (localhost only). Change to `0.0.0.0` to expose the server on the network.
 
 ## API
 
@@ -109,7 +111,7 @@ Register URLs to receive real-time events when messages or reactions arrive.
 # Register a webhook
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url": "http://127.0.0.1:8080/webhook", "events": ["message.received", "reaction.added"]}' http://localhost:3001/api/v1/webhooks
 
-# Register with a secret (AiMessage sends it as X-Webhook-Secret header on every delivery)
+# Register with a secret (AiMessage sends HMAC-SHA256 signature as X-Webhook-Signature header)
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url": "http://127.0.0.1:8080/webhook", "events": ["message.received"], "secret": "my-secret-token"}' http://localhost:3001/api/v1/webhooks
 
 # List webhooks
@@ -121,7 +123,9 @@ curl -X DELETE -H "X-API-Key: $KEY" http://localhost:3001/api/v1/webhooks/<id>
 
 Events: `message.received`, `message.sent`, `reaction.added`, `reaction.removed`.
 
-The `secret` field is optional. When provided, AiMessage includes an `X-Webhook-Secret` header on every delivery so consumers can verify the request is authentic. For single-machine setups, binding your webhook listener to `127.0.0.1` is also recommended.
+The `secret` field is optional. When provided, AiMessage computes an HMAC-SHA256 signature over the raw request body using the secret as the key, and sends it as `X-Webhook-Signature: sha256=<hex>` on every delivery. To verify: compute `HMAC-SHA256(secret, raw_body)` and compare the hex digest to the value after `sha256=` in the header. For single-machine setups, binding your webhook listener to `127.0.0.1` is also recommended.
+
+**Rate limiting**: The API enforces a global limit of 60 requests per minute. Requests that exceed this limit receive `429 Too Many Requests`.
 
 Webhook payload format:
 
@@ -164,7 +168,7 @@ Multiple clients can connect simultaneously. If a client is too slow, lagged eve
 
 ```bash
 curl http://localhost:3001/api/v1/health
-# {"status":"ok","backend":{"connected":true,"private_api_available":false,"message":null}}
+# {"status":"ok","backend":{"connected":true,"message":null}}
 ```
 
 ## Permissions
@@ -185,6 +189,9 @@ cargo run
 
 # Run with structured JSON logs
 RUST_LOG=aimessage=debug cargo run
+
+# Run unit tests (16 tests)
+cargo test
 
 # Lint
 cargo clippy
