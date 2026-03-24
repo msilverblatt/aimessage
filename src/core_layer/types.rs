@@ -131,3 +131,58 @@ pub struct BackendStatus {
     pub private_api_available: bool,
     pub message: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reaction_type_from_associated_type() {
+        assert!(matches!(ReactionType::from_associated_type(2000), Some(ReactionType::Love)));
+        assert!(matches!(ReactionType::from_associated_type(2001), Some(ReactionType::ThumbsUp)));
+        assert!(matches!(ReactionType::from_associated_type(3000), Some(ReactionType::Love)));
+        assert!(ReactionType::from_associated_type(1999).is_none());
+        assert!(ReactionType::from_associated_type(2006).is_none());
+        assert!(ReactionType::from_associated_type(0).is_none());
+    }
+
+    #[test]
+    fn test_is_removal() {
+        assert!(!ReactionType::is_removal(2000));
+        assert!(!ReactionType::is_removal(2005));
+        assert!(ReactionType::is_removal(3000));
+        assert!(ReactionType::is_removal(3005));
+        assert!(!ReactionType::is_removal(1000));
+    }
+
+    #[test]
+    fn test_event_name() {
+        let msg = Message {
+            id: "1".into(), guid: "g".into(), conversation_id: "c".into(),
+            sender: "s".into(), body: "b".into(), attachments: vec![],
+            timestamp: chrono::Utc::now(), is_from_me: false, status: MessageStatus::Delivered,
+        };
+        assert_eq!(Event::NewMessage(msg.clone()).event_name(), "message.received");
+        assert_eq!(Event::MessageSent(msg).event_name(), "message.sent");
+
+        let rxn = Reaction {
+            id: "1".into(), message_id: "2".into(), message_guid: "g".into(),
+            sender: "s".into(), reaction_type: ReactionType::Love, timestamp: chrono::Utc::now(),
+        };
+        assert_eq!(Event::ReactionAdded(rxn.clone()).event_name(), "reaction.added");
+        assert_eq!(Event::ReactionRemoved(rxn).event_name(), "reaction.removed");
+    }
+
+    #[test]
+    fn test_event_serialization() {
+        let msg = Message {
+            id: "1".into(), guid: "g".into(), conversation_id: "c".into(),
+            sender: "s".into(), body: "hello".into(), attachments: vec![],
+            timestamp: chrono::Utc::now(), is_from_me: false, status: MessageStatus::Delivered,
+        };
+        let event = Event::NewMessage(msg);
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "message.received");
+        assert_eq!(json["data"]["body"], "hello");
+    }
+}

@@ -120,3 +120,44 @@ impl Config {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_empty_api_key() {
+        let config = Config {
+            server: ServerConfig { host: "127.0.0.1".into(), port: 3001 },
+            auth: AuthConfig { api_key: "".into() },
+            imessage: IMessageConfig { chat_db_path: "/tmp/test.db".into(), poll_interval_ms: 1000, private_api: false },
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_placeholder_api_key() {
+        let config = Config {
+            server: ServerConfig { host: "127.0.0.1".into(), port: 3001 },
+            auth: AuthConfig { api_key: "CHANGE_ME".into() },
+            imessage: IMessageConfig { chat_db_path: "/tmp/test.db".into(), poll_interval_ms: 1000, private_api: false },
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_missing_chatdb() {
+        let config = Config {
+            server: ServerConfig { host: "127.0.0.1".into(), port: 3001 },
+            auth: AuthConfig { api_key: "valid-key".into() },
+            imessage: IMessageConfig { chat_db_path: "/nonexistent/chat.db".into(), poll_interval_ms: 1000, private_api: false },
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_default_chat_db_path() {
+        let path = Config::default_chat_db_path();
+        assert!(path.contains("Library/Messages/chat.db"));
+    }
+}

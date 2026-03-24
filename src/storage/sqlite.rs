@@ -239,3 +239,90 @@ impl Storage {
         self.set_state("last_processed_rowid", &rowid.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_storage() -> Storage {
+        Storage::new(std::path::Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn test_create_and_list_webhooks() {
+        let s = test_storage();
+        let wh = s.create_or_update_webhook("http://test.com/hook", &["message.received".into()], None).unwrap();
+        assert!(!wh.id.is_empty());
+        assert_eq!(wh.url, "http://test.com/hook");
+        assert_eq!(wh.events, vec!["message.received"]);
+
+        let list = s.list_webhooks().unwrap();
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn test_duplicate_url_updates() {
+        let s = test_storage();
+        let wh1 = s.create_or_update_webhook("http://test.com/hook", &["message.received".into()], None).unwrap();
+        let wh2 = s.create_or_update_webhook("http://test.com/hook", &["message.sent".into()], None).unwrap();
+        assert_eq!(wh1.id, wh2.id);
+        assert_eq!(wh2.events, vec!["message.sent"]);
+        assert_eq!(s.list_webhooks().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_delete_webhook() {
+        let s = test_storage();
+        let wh = s.create_or_update_webhook("http://test.com/hook", &["message.received".into()], None).unwrap();
+        assert!(s.delete_webhook(&wh.id).unwrap());
+        assert!(!s.delete_webhook(&wh.id).unwrap());
+        assert_eq!(s.list_webhooks().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_webhook_secret() {
+        let s = test_storage();
+        let wh = s.create_or_update_webhook("http://test.com/hook", &["message.received".into()], Some("mysecret")).unwrap();
+        assert_eq!(wh.secret, Some("mysecret".to_string()));
+    }
+
+    #[test]
+    fn test_get_webhooks_for_event() {
+        let s = test_storage();
+        s.create_or_update_webhook("http://a.com", &["message.received".into()], None).unwrap();
+        s.create_or_update_webhook("http://b.com", &["message.sent".into()], None).unwrap();
+        s.create_or_update_webhook("http://c.com", &["message.received".into(), "message.sent".into()], None).unwrap();
+
+        let received = s.get_webhooks_for_event("message.received").unwrap();
+        assert_eq!(received.len(), 2);
+        let sent = s.get_webhooks_for_event("message.sent").unwrap();
+        assert_eq!(sent.len(), 2);
+    }
+
+    #[test]
+    fn test_message_dedup() {
+        let s = test_storage();
+        assert!(s.log_message("rowid1", "conv1").unwrap());
+        assert!(!s.log_message("rowid1", "conv1").unwrap());
+    }
+
+    #[test]
+    fn test_state_persistence() {
+        let s = test_storage();
+        assert_eq!(s.get_last_rowid().unwrap(), 0);
+        s.set_last_rowid(12345).unwrap();
+        assert_eq!(s.get_last_rowid().unwrap(), 12345);
+        s.set_last_rowid(99999).unwrap();
+        assert_eq!(s.get_last_rowid().unwrap(), 99999);
+    }
+
+    #[test]
+    fn test_delivery_tracking() {
+        let s = test_storage();
+        assert!(s.log_delivery("rowid1", "webhook1").unwrap());
+        assert!(!s.log_delivery("rowid1", "webhook1").unwrap());
+        assert!(s.log_delivery("rowid1", "webhook2").unwrap());
+        s.update_delivery_status("rowid1", "webhook1", "delivered").unwrap();
+        s.update_delivery_status("rowid1", "webhook2", "failed").unwrap();
+    }
+}
