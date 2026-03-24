@@ -29,6 +29,7 @@ pub struct PaginationParams {
 pub struct CreateWebhookBody {
     pub url: String,
     pub events: Vec<String>,
+    pub secret: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -112,7 +112,7 @@ pub async fn create_webhook(
 ) -> Result<Json<WebhookResponse>, ApiError> {
     let record = state
         .storage
-        .create_or_update_webhook(&body.url, &body.events)
+        .create_or_update_webhook(&body.url, &body.events, body.secret.as_deref())
         .map_err(ApiError::Storage)?;
     Ok(Json(WebhookResponse::from(record)))
 }

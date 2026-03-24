@@ -12,6 +12,7 @@ pub struct WebhookRecord {
     pub id: String,
     pub url: String,
     pub events: Vec<String>,
+    pub secret: Option<String>,
     pub created_at: String,
 }
 
@@ -49,12 +50,16 @@ impl Storage {
             CREATE TABLE IF NOT EXISTS state (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-            );"
+            );
+
+"
         ).map_err(|e| format!("Migration failed: {}", e))?;
+        // Add secret column if it doesn't exist (idempotent)
+        let _ = conn.execute("ALTER TABLE webhooks ADD COLUMN secret TEXT", []);
         Ok(())
     }
 
-    pub fn create_or_update_webhook(&self, url: &str, events: &[String]) -> Result<WebhookRecord, String> {
+    pub fn create_or_update_webhook(&self, url: &str, events: &[String], secret: Option<&str>) -> Result<WebhookRecord, String> {
         let conn = self.conn.lock().unwrap();
         let events_json = serde_json::to_string(events).unwrap();
 
@@ -68,16 +73,16 @@ impl Storage {
 
         let id = if let Some(existing_id) = existing {
             conn.execute(
-                "UPDATE webhooks SET events = ?1 WHERE id = ?2",
-                params![events_json, existing_id],
+                "UPDATE webhooks SET events = ?1, secret = ?2 WHERE id = ?3",
+                params![events_json, secret, existing_id],
             )
             .map_err(|e| format!("Failed to update webhook: {}", e))?;
             existing_id
         } else {
             let new_id = Uuid::new_v4().to_string();
             conn.execute(
-                "INSERT INTO webhooks (id, url, events) VALUES (?1, ?2, ?3)",
-                params![new_id, url, events_json],
+                "INSERT INTO webhooks (id, url, events, secret) VALUES (?1, ?2, ?3, ?4)",
+                params![new_id, url, events_json, secret],
             )
             .map_err(|e| format!("Failed to create webhook: {}", e))?;
             new_id
@@ -91,7 +96,7 @@ impl Storage {
     pub fn get_webhook(&self, id: &str) -> Result<WebhookRecord, String> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, url, events, created_at FROM webhooks WHERE id = ?1",
+            "SELECT id, url, events, secret, created_at FROM webhooks WHERE id = ?1",
             params![id],
             |row| {
                 let events_str: String = row.get(2)?;
@@ -100,7 +105,8 @@ impl Storage {
                     id: row.get(0)?,
                     url: row.get(1)?,
                     events,
-                    created_at: row.get(3)?,
+                    secret: row.get(3)?,
+                    created_at: row.get(4)?,
                 })
             },
         )
@@ -110,7 +116,7 @@ impl Storage {
     pub fn list_webhooks(&self) -> Result<Vec<WebhookRecord>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, url, events, created_at FROM webhooks")
+            .prepare("SELECT id, url, events, secret, created_at FROM webhooks")
             .map_err(|e| format!("Failed to query webhooks: {}", e))?;
 
         let rows = stmt
@@ -121,7 +127,8 @@ impl Storage {
                     id: row.get(0)?,
                     url: row.get(1)?,
                     events,
-                    created_at: row.get(3)?,
+                    secret: row.get(3)?,
+                    created_at: row.get(4)?,
                 })
             })
             .map_err(|e| format!("Failed to read webhooks: {}", e))?;

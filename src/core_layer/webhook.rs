@@ -65,7 +65,7 @@ impl WebhookDispatcher {
         let payload = serde_json::to_value(event).unwrap();
 
         for webhook in &webhooks {
-            let delivered = self.deliver_with_retry(&webhook.url, &payload).await;
+            let delivered = self.deliver_with_retry(&webhook.url, &payload, webhook.secret.as_deref()).await;
             let status = if delivered { "delivered" } else { "failed" };
             if let Err(e) = self.storage.update_delivery_status(event_id, status) {
                 tracing::error!(error = %e, "Failed to update delivery status");
@@ -73,21 +73,21 @@ impl WebhookDispatcher {
         }
     }
 
-    async fn deliver_with_retry(&self, url: &str, payload: &serde_json::Value) -> bool {
+    async fn deliver_with_retry(&self, url: &str, payload: &serde_json::Value, secret: Option<&str>) -> bool {
         let delays_after_failure = [
             std::time::Duration::from_secs(1),
             std::time::Duration::from_secs(5),
             std::time::Duration::from_secs(30),
         ];
 
-        if self.try_deliver(url, payload).await {
+        if self.try_deliver(url, payload, secret).await {
             return true;
         }
 
         for (retry, delay) in delays_after_failure.iter().take(2).enumerate() {
             tracing::info!(url = %url, retry = retry + 1, "Retrying webhook delivery");
             tokio::time::sleep(*delay).await;
-            if self.try_deliver(url, payload).await {
+            if self.try_deliver(url, payload, secret).await {
                 return true;
             }
         }
@@ -96,8 +96,12 @@ impl WebhookDispatcher {
         false
     }
 
-    async fn try_deliver(&self, url: &str, payload: &serde_json::Value) -> bool {
-        match self.client.post(url).json(payload).send().await {
+    async fn try_deliver(&self, url: &str, payload: &serde_json::Value, secret: Option<&str>) -> bool {
+        let mut request = self.client.post(url).json(payload);
+        if let Some(s) = secret {
+            request = request.header("X-Webhook-Secret", s);
+        }
+        match request.send().await {
             Ok(resp) if resp.status().is_success() => {
                 tracing::info!(url = %url, "Webhook delivered");
                 true
