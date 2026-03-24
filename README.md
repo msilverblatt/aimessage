@@ -2,7 +2,7 @@
 
 Turn any Mac into an iMessage API server. Single binary, zero external dependencies.
 
-AiMessage reads your iMessage database directly, sends messages via AppleScript, and exposes everything through a clean REST API with webhook delivery for real-time events.
+AiMessage reads your iMessage database directly, sends messages and attachments via AppleScript, and exposes everything through a REST API with webhook and WebSocket delivery for real-time events.
 
 ## How it works
 
@@ -81,11 +81,19 @@ curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/messages/12345"
 # Send a message
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"recipient": "+15551234567", "body": "Hello from AiMessage"}' http://localhost:3001/api/v1/messages
 
+# Send an image/file
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"recipient": "+15551234567", "body": "", "attachments": ["/path/to/image.jpg"]}' http://localhost:3001/api/v1/messages
+
+# Send a message with an attachment
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"recipient": "+15551234567", "body": "Check this out", "attachments": ["/path/to/photo.png"]}' http://localhost:3001/api/v1/messages
+
 # React to a message (requires private_api = true)
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"reaction": "love"}' http://localhost:3001/api/v1/messages/12345/react
 ```
 
 Query parameters for `GET /messages`: `conversation_id`, `since` (ISO 8601), `limit` (default 50, max 200), `offset`.
+
+Incoming messages include attachment file paths in the `attachments` array (e.g., `/Users/you/Library/Messages/Attachments/.../IMG_1234.jpeg`).
 
 Reaction types: `love`, `thumbsup`, `thumbsdown`, `haha`, `exclamation`, `question`.
 
@@ -143,6 +151,23 @@ Webhook payload format:
 ```
 
 Failed deliveries are retried 3 times (1s, 5s backoff).
+
+### WebSocket
+
+Real-time event streaming as an alternative to webhooks. Connect and receive all events as they happen.
+
+```bash
+# Connect (using websocat, wscat, or any WS client)
+websocat "ws://localhost:3001/api/v1/ws?api_key=YOUR_KEY"
+```
+
+Auth is via query parameter (`api_key`). Each event is sent as a JSON text frame with the same format as webhook payloads:
+
+```json
+{"type":"message.received","data":{"id":"94711","guid":"F568F54A-...","conversation_id":"any;-;+15551234567","sender":"+15551234567","body":"Hey!","attachments":[],"timestamp":"2026-03-23T23:49:54Z","is_from_me":false,"status":"delivered"}}
+```
+
+Multiple clients can connect simultaneously. If a client is too slow, lagged events are skipped rather than buffering indefinitely.
 
 ### Health
 
@@ -211,7 +236,7 @@ Three layers:
 2. **Core** — `MessageBackend` trait, webhook dispatch, domain types
 3. **iMessage** — direct macOS integration (chat.db reads, AppleScript sends, optional IMCore)
 
-The backend polls chat.db every second for new messages (by tracking the highest ROWID). New events are pushed into a channel, picked up by the webhook dispatcher, and delivered to registered URLs.
+The backend polls chat.db every second for new messages (by tracking the highest ROWID). New events are pushed into a broadcast channel. Both the webhook dispatcher and any connected WebSocket clients subscribe to this channel and receive events in real-time.
 
 ### Key implementation details
 
