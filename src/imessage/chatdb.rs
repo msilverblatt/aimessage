@@ -3,6 +3,18 @@ use std::path::Path;
 
 use crate::core_layer::types::*;
 
+fn expand_tilde(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            let mut expanded = home.to_string_lossy().into_owned();
+            expanded.push('/');
+            expanded.push_str(rest);
+            return expanded;
+        }
+    }
+    path.to_string()
+}
+
 /// Mac epoch offset: seconds between Unix epoch (1970) and Mac epoch (2001)
 const MAC_EPOCH_OFFSET: i64 = 978_307_200;
 /// Threshold for detecting nanosecond timestamps
@@ -111,13 +123,14 @@ impl ChatDb {
                 }
             } else {
                 // Regular message
+                let attachments = self.get_attachments_for_message(rowid).unwrap_or_default();
                 let message = Message {
                     id: rowid.to_string(),
                     guid,
                     conversation_id: conv_id,
                     sender,
                     body: text.unwrap_or_default(),
-                    attachments: vec![], // TODO: attachment support post-MVP
+                    attachments,
                     timestamp,
                     is_from_me,
                     status: if is_from_me { MessageStatus::Sent } else { MessageStatus::Delivered },
@@ -132,6 +145,28 @@ impl ChatDb {
         }
 
         Ok((events, max_rowid))
+    }
+
+    /// Get expanded file paths for all attachments on a message
+    fn get_attachments_for_message(&self, message_rowid: i64) -> Result<Vec<String>, String> {
+        let mut stmt = self.conn.prepare(
+            "SELECT a.filename FROM attachment a
+             JOIN message_attachment_join maj ON a.ROWID = maj.attachment_id
+             WHERE maj.message_id = ?1"
+        ).map_err(|e| format!("Failed to prepare attachment query: {}", e))?;
+
+        let rows = stmt.query_map(params![message_rowid], |row| {
+            row.get::<_, Option<String>>(0)
+        }).map_err(|e| format!("Failed to query attachments: {}", e))?;
+
+        let mut paths = Vec::new();
+        for row in rows {
+            let filename = row.map_err(|e| format!("Attachment row error: {}", e))?;
+            if let Some(f) = filename {
+                paths.push(expand_tilde(&f));
+            }
+        }
+        Ok(paths)
     }
 
     /// Look up a message ROWID by its guid
@@ -200,23 +235,25 @@ impl ChatDb {
             let is_from_me: bool = row.get(4)?;
             let handle: Option<String> = row.get(5)?;
             let chat_guid: Option<String> = row.get(6)?;
+            Ok((rowid, guid, text, date, is_from_me, handle, chat_guid))
+        }).map_err(|e| format!("Failed to query messages: {}", e))?;
 
-            Ok(Message {
+        let mut messages = Vec::new();
+        for row in rows {
+            let (rowid, guid, text, date, is_from_me, handle, chat_guid) =
+                row.map_err(|e| format!("Row error: {}", e))?;
+            let attachments = self.get_attachments_for_message(rowid).unwrap_or_default();
+            messages.push(Message {
                 id: rowid.to_string(),
                 guid,
                 conversation_id: chat_guid.unwrap_or_default(),
                 sender: if is_from_me { "me".to_string() } else { handle.unwrap_or_default() },
                 body: text.unwrap_or_default(),
-                attachments: vec![],
+                attachments,
                 timestamp: Self::mac_to_utc(date),
                 is_from_me,
                 status: if is_from_me { MessageStatus::Sent } else { MessageStatus::Delivered },
-            })
-        }).map_err(|e| format!("Failed to query messages: {}", e))?;
-
-        let mut messages = Vec::new();
-        for row in rows {
-            messages.push(row.map_err(|e| format!("Row error: {}", e))?);
+            });
         }
         Ok(messages)
     }
@@ -225,7 +262,7 @@ impl ChatDb {
     pub fn get_message(&self, rowid: &str) -> Result<Message, String> {
         let rowid_int: i64 = rowid.parse().map_err(|_| format!("Invalid message id: {}", rowid))?;
 
-        self.conn.query_row(
+        let (guid, text, date, is_from_me, handle, chat_guid) = self.conn.query_row(
             "SELECT m.ROWID, m.guid, m.text, m.date, m.is_from_me,
                     h.id as handle_address, c.guid as chat_guid
              FROM message m
@@ -241,20 +278,22 @@ impl ChatDb {
                 let is_from_me: bool = row.get(4)?;
                 let handle: Option<String> = row.get(5)?;
                 let chat_guid: Option<String> = row.get(6)?;
-
-                Ok(Message {
-                    id: rowid.to_string(),
-                    guid,
-                    conversation_id: chat_guid.unwrap_or_default(),
-                    sender: if is_from_me { "me".to_string() } else { handle.unwrap_or_default() },
-                    body: text.unwrap_or_default(),
-                    attachments: vec![],
-                    timestamp: Self::mac_to_utc(date),
-                    is_from_me,
-                    status: if is_from_me { MessageStatus::Sent } else { MessageStatus::Delivered },
-                })
+                Ok((guid, text, date, is_from_me, handle, chat_guid))
             }
-        ).map_err(|e| format!("Message not found: {}", e))
+        ).map_err(|e| format!("Message not found: {}", e))?;
+
+        let attachments = self.get_attachments_for_message(rowid_int).unwrap_or_default();
+        Ok(Message {
+            id: rowid.to_string(),
+            guid,
+            conversation_id: chat_guid.unwrap_or_default(),
+            sender: if is_from_me { "me".to_string() } else { handle.unwrap_or_default() },
+            body: text.unwrap_or_default(),
+            attachments,
+            timestamp: Self::mac_to_utc(date),
+            is_from_me,
+            status: if is_from_me { MessageStatus::Sent } else { MessageStatus::Delivered },
+        })
     }
 
     /// Get the guid for a message by ROWID
@@ -362,23 +401,25 @@ impl ChatDb {
                 let text: Option<String> = row.get(2)?;
                 let date: i64 = row.get(3)?;
                 let chat_guid: Option<String> = row.get(4)?;
+                Ok((rowid, guid, text, date, chat_guid))
+            }
+        );
 
-                Ok(Message {
+        match result {
+            Ok((rowid, guid, text, date, chat_guid)) => {
+                let attachments = self.get_attachments_for_message(rowid).unwrap_or_default();
+                Ok(Some(Message {
                     id: rowid.to_string(),
                     guid,
                     conversation_id: chat_guid.unwrap_or_default(),
                     sender: "me".to_string(),
                     body: text.unwrap_or_default(),
-                    attachments: vec![],
+                    attachments,
                     timestamp: Self::mac_to_utc(date),
                     is_from_me: true,
                     status: MessageStatus::Sent,
-                })
+                }))
             }
-        );
-
-        match result {
-            Ok(msg) => Ok(Some(msg)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(format!("Failed to find sent message: {}", e)),
         }

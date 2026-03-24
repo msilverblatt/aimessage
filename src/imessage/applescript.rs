@@ -32,6 +32,36 @@ end tell"#,
     }
 }
 
+/// Send a file attachment via AppleScript
+pub async fn send_attachment(recipient: &str, file_path: &str) -> Result<(), String> {
+    let escaped_recipient = recipient.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_path = file_path.replace('\\', "\\\\").replace('"', "\\\"");
+
+    let script = format!(
+        r#"tell application "Messages"
+    set targetService to 1st service whose service type = iMessage
+    set targetBuddy to buddy "{}" of targetService
+    send POSIX file "{}" to targetBuddy
+end tell"#,
+        escaped_recipient, escaped_path
+    );
+
+    let output = timeout(
+        Duration::from_secs(10),
+        Command::new("osascript").arg("-e").arg(&script).output(),
+    )
+    .await
+    .map_err(|_| "AppleScript timed out after 10 seconds".to_string())?
+    .map_err(|e| format!("Failed to run osascript: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("AppleScript failed: {}", stderr.trim()))
+    }
+}
+
 /// Check if Messages.app is reachable via AppleScript
 pub async fn check_automation_permission() -> Result<(), String> {
     let output = timeout(
