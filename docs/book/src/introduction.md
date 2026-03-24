@@ -6,7 +6,6 @@ AiMessage turns any Mac into an iMessage API server. Single binary, zero externa
 
 - **Read path**: Polls `~/Library/Messages/chat.db` (SQLite) for new messages and reactions, tracking the highest processed ROWID so it resumes correctly after restart.
 - **Write path**: Sends messages and attachments via `osascript` controlling Messages.app — no private frameworks required for basic sending.
-- **Advanced features** (optional): Reactions and typing indicators via Apple's private IMCore framework, which requires SIP to be disabled.
 
 ## What you can build
 

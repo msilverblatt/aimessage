@@ -23,7 +23,7 @@ curl http://localhost:3001/api/v1/health
 Expected response:
 
 ```json
-{"status":"ok","backend":{"connected":true,"private_api_available":false,"message":null}}
+{"status":"ok","backend":{"connected":true,"message":null}}
 ```
 
 `connected: true` means AiMessage has successfully opened `chat.db`. If this is `false`, check that Full Disk Access has been granted to the app bundle.

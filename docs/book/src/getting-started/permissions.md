@@ -1,6 +1,6 @@
 # Permissions
 
-AiMessage requires macOS permissions to read your message database and control Messages.app. Reactions and typing indicators require an additional step.
+AiMessage requires macOS permissions to read your message database and control Messages.app.
 
 ## Summary
 
@@ -8,7 +8,6 @@ AiMessage requires macOS permissions to read your message database and control M
 |---|---|---|
 | Full Disk Access | Reading `chat.db` | System Settings → Privacy & Security → Full Disk Access → add `AiMessage.app` |
 | Automation | Sending messages via AppleScript | Prompted automatically on first launch; or System Settings → Privacy & Security → Automation |
-| SIP disabled | Reactions and typing indicators (optional) | Boot to Recovery Mode, run `csrutil disable` |
 
 ---
 
@@ -41,24 +40,3 @@ If you dismissed that dialog or need to re-grant it:
 2. Find **AiMessage** in the list
 3. Enable the **Messages** toggle beneath it
 
----
-
-## SIP (System Integrity Protection)
-
-**Why**: Reactions and typing indicators require calling into Apple's private `IMCore` framework. Loading private frameworks is blocked by SIP.
-
-**This is optional.** Basic sending, receiving, webhooks, and WebSocket all work with SIP enabled. Only disable SIP if you specifically need reaction and typing indicator support.
-
-**How to disable SIP**:
-
-1. Shut down your Mac
-2. Boot into Recovery Mode:
-   - **Apple Silicon**: Hold the power button until "Loading startup options" appears, then select Options
-   - **Intel**: Hold Cmd+R during startup
-3. Open **Terminal** from the Utilities menu
-4. Run: `csrutil disable`
-5. Restart
-
-To re-enable SIP: repeat the steps above and run `csrutil enable`.
-
-After disabling SIP, set `private_api = true` in your config file (see [Configuration](./configuration.md)).

@@ -17,7 +17,6 @@ src/
 ├── imessage/            # iMessage integration
 │   ├── chatdb.rs        # chat.db SQLite reader + poller
 │   ├── applescript.rs   # osascript message sender
-│   ├── private_api.rs   # IMCore stub (SIP check)
 │   └── backend.rs       # MessageBackend implementation
 └── storage/
     └── sqlite.rs        # App DB: webhooks, message log, state
@@ -57,7 +56,7 @@ Core domain types: `Message`, `Conversation`, `Reaction`, and the `Event` enum. 
 
 ### `core_layer/backend.rs`
 
-The `MessageBackend` trait defines the interface the API layer uses to interact with iMessage: `send_message`, `list_messages`, `get_message`, `list_conversations`, `get_conversation`, `react`, `send_typing`. The iMessage layer provides the implementation; this trait makes the API layer testable without a real Mac.
+The `MessageBackend` trait defines the interface the API layer uses to interact with iMessage: `send_message`, `list_messages`, `get_message`, `list_conversations`, `get_conversation`. The iMessage layer provides the implementation; this trait makes the API layer testable without a real Mac.
 
 ### `core_layer/webhook.rs`
 
@@ -75,13 +74,9 @@ Opens `chat.db` read-only in WAL mode. Contains the SQL queries for reading mess
 
 Constructs and runs `osascript` commands to send messages and attachments via Messages.app. Uses environment variables to pass message content safely.
 
-### `imessage/private_api.rs`
-
-Attempts to load Apple's private `IMCore` framework via FFI. Reports whether the load succeeded (indicating SIP is disabled). Exposes functions for sending reactions and typing indicators when available.
-
 ### `imessage/backend.rs`
 
-Implements the `MessageBackend` trait using `chatdb.rs`, `applescript.rs`, and `private_api.rs`. This is the concrete implementation that runs in production.
+Implements the `MessageBackend` trait using `chatdb.rs` and `applescript.rs`. This is the concrete implementation that runs in production.
 
 ### `storage/sqlite.rs`
 

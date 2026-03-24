@@ -30,7 +30,6 @@ api_key = "your-generated-uuid"   # All API requests require this in the X-API-K
 [imessage]
 chat_db_path = "/Users/you/Library/Messages/chat.db"   # Path to the iMessage SQLite database.
 poll_interval_ms = 1000                                  # How often (in milliseconds) to check for new messages.
-private_api = false                                      # Set true to enable reactions and typing indicators (requires SIP disabled).
 ```
 
 ## Field reference
@@ -54,7 +53,6 @@ private_api = false                                      # Set true to enable re
 |---|---|---|
 | `chat_db_path` | Auto-detected | Path to `chat.db`. Auto-detected as `~/Library/Messages/chat.db`. Override only if your database is in a non-standard location. |
 | `poll_interval_ms` | `1000` | Polling interval in milliseconds. Lower values reduce latency but increase CPU and disk I/O. |
-| `private_api` | `false` | Enables IMCore integration for reactions and typing indicators. Requires SIP to be disabled. |
 
 ## Auto-detection of chat.db
 

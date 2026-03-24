@@ -47,16 +47,3 @@ The message body and recipient are passed to the script via environment variable
 
 To send an attachment, `osascript` is called with a script that uses `send` with a POSIX file reference. The file must exist on the local filesystem at the path provided.
 
----
-
-## Private API (IMCore stub)
-
-Reactions and typing indicators are not exposed by AppleScript. They require calling into Apple's private `IMCore` framework directly.
-
-When `private_api = true` is set in config:
-
-1. AiMessage checks at startup whether SIP is disabled by attempting to load the private framework.
-2. If SIP is enabled, the load fails. The `private_api_available` field in the health response is set to `false`, and reaction/typing endpoints return `501 Not Implemented`.
-3. If SIP is disabled, the framework loads and those endpoints become functional.
-
-The IMCore integration is implemented in `src/imessage/private_api.rs` as a stub that wraps the framework calls with Rust's FFI layer.

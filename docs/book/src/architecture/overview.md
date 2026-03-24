@@ -24,7 +24,6 @@ AiMessage is organized into three layers. Each layer has a single responsibility
 │               iMessage Layer                     │
 │  chat.db reader (ROWID polling)                  │
 │  AppleScript sender (osascript)                  │
-│  IMCore stub (private API, optional)             │
 │  MessageBackend implementation                   │
 └─────────────────────────────────────────────────┘
 ```
