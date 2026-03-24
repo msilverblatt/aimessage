@@ -79,14 +79,10 @@ curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/messages?conversation_id
 curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/messages/12345"
 
 # Send a message
-curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"recipient": "+15551234567", "body": "Hello from AiMessage"}' \
-  http://localhost:3001/api/v1/messages
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"recipient": "+15551234567", "body": "Hello from AiMessage"}' http://localhost:3001/api/v1/messages
 
 # React to a message (requires private_api = true)
-curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"reaction": "love"}' \
-  http://localhost:3001/api/v1/messages/12345/react
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"reaction": "love"}' http://localhost:3001/api/v1/messages/12345/react
 ```
 
 Query parameters for `GET /messages`: `conversation_id`, `since` (ISO 8601), `limit` (default 50, max 200), `offset`.
@@ -103,8 +99,7 @@ curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/conversations?limit=10"
 curl -H "X-API-Key: $KEY" "http://localhost:3001/api/v1/conversations/iMessage;-;+15551234567"
 
 # Send typing indicator (requires private_api = true)
-curl -X POST -H "X-API-Key: $KEY" \
-  http://localhost:3001/api/v1/conversations/iMessage;-;+15551234567/typing
+curl -X POST -H "X-API-Key: $KEY" http://localhost:3001/api/v1/conversations/iMessage;-;+15551234567/typing
 ```
 
 ### Webhooks
@@ -113,9 +108,10 @@ Register URLs to receive real-time events when messages or reactions arrive.
 
 ```bash
 # Register a webhook
-curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"url": "https://your-server.com/webhook", "events": ["message.received", "reaction.added"]}' \
-  http://localhost:3001/api/v1/webhooks
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url": "http://127.0.0.1:8080/webhook", "events": ["message.received", "reaction.added"]}' http://localhost:3001/api/v1/webhooks
+
+# Register with a secret (AiMessage sends it as X-Webhook-Secret header on every delivery)
+curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"url": "http://127.0.0.1:8080/webhook", "events": ["message.received"], "secret": "my-secret-token"}' http://localhost:3001/api/v1/webhooks
 
 # List webhooks
 curl -H "X-API-Key: $KEY" http://localhost:3001/api/v1/webhooks
@@ -125,6 +121,8 @@ curl -X DELETE -H "X-API-Key: $KEY" http://localhost:3001/api/v1/webhooks/<id>
 ```
 
 Events: `message.received`, `message.sent`, `reaction.added`, `reaction.removed`.
+
+The `secret` field is optional. When provided, AiMessage includes an `X-Webhook-Secret` header on every delivery so consumers can verify the request is authentic. For single-machine setups, binding your webhook listener to `127.0.0.1` is also recommended.
 
 Webhook payload format:
 
