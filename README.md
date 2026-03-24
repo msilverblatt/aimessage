@@ -219,7 +219,7 @@ src/
 ├── imessage/            # iMessage integration
 │   ├── chatdb.rs        # chat.db SQLite reader + poller
 │   ├── applescript.rs   # osascript message sender
-│   ├── private_api.rs   # IMCore stub (SIP check)
+│   ├── private_api.rs   # Private API availability check (stub)
 │   └── backend.rs       # MessageBackend implementation
 └── storage/
     └── sqlite.rs        # App DB: webhooks, message log, state
@@ -231,7 +231,7 @@ Three layers:
 
 1. **API** (Axum) — HTTP endpoints, auth, request validation
 2. **Core** — `MessageBackend` trait, webhook dispatch, domain types
-3. **iMessage** — direct macOS integration (chat.db reads, AppleScript sends, optional IMCore)
+3. **iMessage** — direct macOS integration (chat.db reads, AppleScript sends)
 
 The backend polls chat.db every second for new messages (by tracking the highest ROWID). New events are pushed into a broadcast channel. Both the webhook dispatcher and any connected WebSocket clients subscribe to this channel and receive events in real-time.
 
