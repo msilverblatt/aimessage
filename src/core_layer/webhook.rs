@@ -1,4 +1,6 @@
+use hmac::{Hmac, Mac};
 use reqwest::Client;
+use sha2::Sha256;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing;
@@ -73,9 +75,12 @@ impl WebhookDispatcher {
         let payload = serde_json::to_value(event).unwrap();
 
         for webhook in &webhooks {
+            if let Err(e) = self.storage.log_delivery(event_id, &webhook.id) {
+                tracing::error!(error = %e, "Failed to log delivery");
+            }
             let delivered = self.deliver_with_retry(&webhook.url, &payload, webhook.secret.as_deref()).await;
             let status = if delivered { "delivered" } else { "failed" };
-            if let Err(e) = self.storage.update_delivery_status(event_id, status) {
+            if let Err(e) = self.storage.update_delivery_status(event_id, &webhook.id, status) {
                 tracing::error!(error = %e, "Failed to update delivery status");
             }
         }
@@ -106,9 +111,17 @@ impl WebhookDispatcher {
     }
 
     async fn try_deliver(&self, url: &str, payload: &serde_json::Value, secret: Option<&str>) -> bool {
-        let mut request = self.client.post(url).json(payload);
+        let body = serde_json::to_string(payload).unwrap();
+        let mut request = self.client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(body.clone());
         if let Some(s) = secret {
-            request = request.header("X-Webhook-Secret", s);
+            let mut mac = Hmac::<Sha256>::new_from_slice(s.as_bytes())
+                .expect("HMAC accepts keys of any length");
+            mac.update(body.as_bytes());
+            let signature = hex::encode(mac.finalize().into_bytes());
+            request = request.header("X-Webhook-Signature", format!("sha256={}", signature));
         }
         match request.send().await {
             Ok(resp) if resp.status().is_success() => {
