@@ -39,9 +39,16 @@ end tell
 /// Send a file attachment via AppleScript.
 /// File path is passed via environment variable to prevent injection.
 pub async fn send_attachment(recipient: &str, file_path: &str) -> Result<(), String> {
-    // Validate the file exists before trying to send
-    if !std::path::Path::new(file_path).exists() {
+    // Validate the file path
+    if file_path.contains("..") {
+        return Err("Attachment path cannot contain '..'".to_string());
+    }
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
         return Err(format!("Attachment file not found: {}", file_path));
+    }
+    if !path.is_file() {
+        return Err(format!("Attachment path is not a file: {}", file_path));
     }
 
     let script = r#"

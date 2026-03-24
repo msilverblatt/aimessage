@@ -22,27 +22,24 @@ const NANO_THRESHOLD: i64 = 1_000_000_000_000;
 
 pub struct ChatDb {
     conn: Connection,
+    nano_timestamps: bool,
 }
 
 impl ChatDb {
     pub fn open(path: &Path) -> Result<Self, String> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| format!("Failed to open chat.db: {}", e))?;
-        Ok(ChatDb { conn })
-    }
-
-    /// Check if this database stores timestamps in nanoseconds (macOS Ventura+)
-    fn uses_nanoseconds(&self) -> bool {
-        self.conn
+        let nano_timestamps = conn
             .query_row("SELECT MAX(date) FROM message", [], |row| row.get::<_, i64>(0))
             .map(|max_date| max_date > NANO_THRESHOLD)
-            .unwrap_or(false)
+            .unwrap_or(false);
+        Ok(ChatDb { conn, nano_timestamps })
     }
 
     /// Convert a Unix timestamp to Mac absolute time, matching the DB's format (seconds or nanos)
     fn unix_to_mac_time(&self, unix_ts: i64) -> i64 {
         let mac_seconds = unix_ts - MAC_EPOCH_OFFSET;
-        if self.uses_nanoseconds() {
+        if self.nano_timestamps {
             mac_seconds * 1_000_000_000
         } else {
             mac_seconds

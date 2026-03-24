@@ -37,7 +37,6 @@ pub fn run(api_key: String, server_config: crate::config::Config) {
         .unwrap();
 
     // Spawn the server on a background thread
-    let server_api_key = api_key.clone();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
         rt.block_on(crate::run_server(server_config));

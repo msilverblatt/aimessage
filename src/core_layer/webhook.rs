@@ -82,17 +82,18 @@ impl WebhookDispatcher {
     }
 
     async fn deliver_with_retry(&self, url: &str, payload: &serde_json::Value, secret: Option<&str>) -> bool {
-        let delays_after_failure = [
+        let retry_delays = [
             std::time::Duration::from_secs(1),
             std::time::Duration::from_secs(5),
-            std::time::Duration::from_secs(30),
         ];
 
+        // First attempt (no delay)
         if self.try_deliver(url, payload, secret).await {
             return true;
         }
 
-        for (retry, delay) in delays_after_failure.iter().take(2).enumerate() {
+        // 2 retries = 3 total attempts
+        for (retry, delay) in retry_delays.iter().enumerate() {
             tracing::info!(url = %url, retry = retry + 1, "Retrying webhook delivery");
             tokio::time::sleep(*delay).await;
             if self.try_deliver(url, payload, secret).await {

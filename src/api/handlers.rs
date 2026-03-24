@@ -113,6 +113,9 @@ pub async fn create_webhook(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateWebhookBody>,
 ) -> Result<Json<WebhookResponse>, ApiError> {
+    if !body.url.starts_with("http://") && !body.url.starts_with("https://") {
+        return Err(ApiError::BadRequest("Webhook URL must use http:// or https://".to_string()));
+    }
     let record = state
         .storage
         .create_or_update_webhook(&body.url, &body.events, body.secret.as_deref())
