@@ -91,6 +91,14 @@ pub async fn run_server(config: config::Config) {
         .expect("Failed to bind");
 
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("Server error");
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to install Ctrl+C handler");
+    tracing::info!("Shutdown signal received, draining connections...");
 }
