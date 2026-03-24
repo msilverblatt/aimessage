@@ -52,6 +52,15 @@ impl Storage {
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS webhook_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                imessage_rowid TEXT NOT NULL,
+                webhook_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                delivered_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(imessage_rowid, webhook_id)
+            );
+
 "
         ).map_err(|e| format!("Migration failed: {}", e))?;
         // Add secret column if it doesn't exist (idempotent)
@@ -169,17 +178,34 @@ impl Storage {
         }
     }
 
+    pub fn log_delivery(
+        &self,
+        imessage_rowid: &str,
+        webhook_id: &str,
+    ) -> Result<bool, String> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.execute(
+            "INSERT OR IGNORE INTO webhook_deliveries (imessage_rowid, webhook_id) VALUES (?1, ?2)",
+            params![imessage_rowid, webhook_id],
+        );
+        match result {
+            Ok(count) => Ok(count > 0),
+            Err(e) => Err(format!("Failed to log delivery: {}", e)),
+        }
+    }
+
     pub fn update_delivery_status(
         &self,
         imessage_rowid: &str,
+        webhook_id: &str,
         status: &str,
     ) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE message_log SET webhook_delivery_status = ?1 WHERE imessage_rowid = ?2",
-            params![status, imessage_rowid],
+            "UPDATE webhook_deliveries SET status = ?1 WHERE imessage_rowid = ?2 AND webhook_id = ?3",
+            params![status, imessage_rowid, webhook_id],
         )
-        .map_err(|e| format!("Failed to update status: {}", e))?;
+        .map_err(|e| format!("Failed to update delivery status: {}", e))?;
         Ok(())
     }
 
